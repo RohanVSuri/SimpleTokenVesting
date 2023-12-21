@@ -15,10 +15,9 @@ pub mod token_vesting {
         account_data.token_mint = token_mint;
         Ok(())
     }
-
+    
     pub fn create_vesting_account(ctx: Context<CreateVestingAccount>, beneficiary: Pubkey, total_amount: u64) -> Result<()> {
         require!(*ctx.accounts.initializer.to_account_info().key == ctx.accounts.account_data.initializer, VestingError::NotInitializer);
-        //initializer of the contract must also be the one who creates these vesting accounts 
 
         let vesting_account = &mut ctx.accounts.vesting_account;
         vesting_account.beneficiary = beneficiary;
@@ -29,8 +28,6 @@ pub mod token_vesting {
 
     pub fn release(ctx: Context<Release>, percent: u8) -> Result<()>{
         require!(*ctx.accounts.sender.to_account_info().key == ctx.accounts.account_data_account.initializer, VestingError::NotInitializer);
-        //this contract will 'release' `percent` of token to all beneficiaries
-        //should require that sender is one who initialized contract
         ctx.accounts.account_data_account.percent_available = percent;
         Ok(())
     }
@@ -40,19 +37,12 @@ pub mod token_vesting {
         require!(*ctx.accounts.sender.to_account_info().key == account_data.initializer, VestingError::NotInitializer);
 
         let claimable_amount = vesting_account.total_amount * account_data.percent_available as u64/ 100;
-        //check over this line. 
-
         require!(vesting_account.claimed_amount < claimable_amount, VestingError::NoUnclaimedTokens);
-
-        let amount_to_claim = claimable_amount - vesting_account.claimed_amount;
-
-        let (pda, bump) = Pubkey::find_program_address(&[b"vesting_pool"], ctx.program_id);
         
+        let amount_to_claim = claimable_amount - vesting_account.claimed_amount;
+        let (pda, bump) = Pubkey::find_program_address(&[b"vesting_pool"], ctx.program_id);
         require!(ctx.accounts.vesting_pool.owner == pda, VestingError::InvalidPoolAuthority);
 
-        
-
-        // let signer_seeds: &[&[&[u8]]] = &[&[&b"vesting_pool"[..]]];
         let cpi_program = ctx.accounts.token_program.to_account_info();
         let cpi_accounts = Transfer {
             from: ctx.accounts.vesting_pool.to_account_info(),
@@ -73,7 +63,7 @@ pub mod token_vesting {
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
-    #[account(init, payer = initializer, space = 32)] //fix space
+    #[account(init, payer = initializer, space = 32)] 
     pub account_data_account: Account<'info, AccountData>,
 
     #[account(mut)]
@@ -84,7 +74,7 @@ pub struct Initialize<'info> {
 
 #[derive(Accounts)]
 pub struct CreateVestingAccount<'info> {
-    #[account(init, payer = initializer, space = 32)] //fix space
+    #[account(init, payer = initializer, space = 32)] 
     pub vesting_account: Account<'info, VestingAccount>,
     pub account_data: Account<'info, AccountData>,
 

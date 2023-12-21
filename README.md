@@ -1,6 +1,6 @@
 # Simple Token Vesting
 
-This repository contains a Rust-based Anchor smart contract for a token vesting system on the Solana blockchain. The contract enables the creation of vesting accounts and the gradual release of tokens according to predefined vesting schedules.
+A Rust-based Anchor smart contract for a token vesting system on the Solana blockchain. The contract enables the creation of vesting accounts and the gradual release of tokens according to predefined vesting schedules.
 ## Contract Overview
 The contract provides functionalities for initializing the contract with a token mint, creating vesting accounts for beneficiaries, releasing tokens to these accounts, and allowing beneficiaries to claim their vested tokens.
 
