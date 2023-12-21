@@ -6,6 +6,8 @@ declare_id!("DzJ68fvNC6PNfZYQzjSNiyLxgcxHD3nkRGsBAjyGTWyd");
 #[program]
 pub mod token_vesting {
 
+    use anchor_spl::token_interface::accessor::amount;
+
     use super::*;
     // When creating the token account, the owner should setAuthority for the amount of tokens to be vested to this contract's pda
     pub fn initialize(ctx: Context<Initialize>, token_mint: Pubkey) -> Result<()> {
@@ -60,6 +62,8 @@ pub mod token_vesting {
         let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_slice);
         
         token::transfer(cpi_context, amount_to_claim)?;
+
+        vesting_account.claimed_amount = amount_to_claim;
         Ok(())
     }
 }
