@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
+use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 declare_id!("DzJ68fvNC6PNfZYQzjSNiyLxgcxHD3nkRGsBAjyGTWyd");
 
@@ -7,7 +7,7 @@ declare_id!("DzJ68fvNC6PNfZYQzjSNiyLxgcxHD3nkRGsBAjyGTWyd");
 pub mod token_vesting {
 
     use super::*;
-
+    //when creating the token account, the owner should setAuthority for the amount of tokens to be vested to this contract's pda
     pub fn initialize(ctx: Context<Initialize>, token_mint: Pubkey) -> Result<()> {
         let account_data = &mut ctx.accounts.account_data_account;
         account_data.percent_available = 0;
@@ -35,9 +35,36 @@ pub mod token_vesting {
         Ok(())
     }
     pub fn claim(ctx: Context<Claim>) -> Result<()> {
-        //check if account exists
-        //check if money not claimed yet
-        //then send the tokens to the person calling 
+        let vesting_account = &mut ctx.accounts.vesting_account;
+        let account_data = &mut ctx.accounts.account_data_account;
+        require!(*ctx.accounts.sender.to_account_info().key == account_data.initializer, VestingError::NotInitializer);
+
+        let claimable_amount = vesting_account.total_amount * account_data.percent_available as u64/ 100;
+        //check over this line. 
+
+        require!(vesting_account.claimed_amount < claimable_amount, VestingError::NoUnclaimedTokens);
+
+        let amount_to_claim = claimable_amount - vesting_account.claimed_amount;
+
+        let (pda, bump) = Pubkey::find_program_address(&[b"vesting_pool"], ctx.program_id);
+        
+        require!(ctx.accounts.vesting_pool.owner == pda, VestingError::InvalidPoolAuthority);
+
+        
+
+        // let signer_seeds: &[&[&[u8]]] = &[&[&b"vesting_pool"[..]]];
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_accounts = Transfer {
+            from: ctx.accounts.vesting_pool.to_account_info(),
+            to: ctx.accounts.to_ata.to_account_info(),
+            authority: ctx.accounts.vesting_pool.to_account_info(),
+        };
+
+        let signer_seeds: &[&[u8]] = &[b"vesting_pool", &[bump]];
+        let signer_slice = &[signer_seeds]; //have to do this b/c the value might be dropped before being used
+        let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_slice);
+        
+        token::transfer(cpi_context, amount_to_claim)?;
         Ok(())
     }
 }
@@ -75,9 +102,16 @@ pub struct Release<'info> {
 
 #[derive(Accounts)]
 pub struct Claim<'info>{
+    pub sender: Signer<'info>,
     #[account(mut)]
-    pub account_data_account: Account<'info, VestingAccount>,
-    pub sender: Signer<'info>
+    pub vesting_account: Account<'info, VestingAccount>,
+    pub account_data_account: Account<'info, AccountData>,
+
+    pub token_program: Program<'info, Token>,
+
+    #[account(mut)]
+    pub to_ata: Account<'info, TokenAccount>,
+    pub vesting_pool: Account<'info, TokenAccount>
 }
 
 #[account]
@@ -102,5 +136,9 @@ pub enum VestingError {
     #[msg("Instruction sender is not initializer of contract")]
     NotInitializer,
     #[msg("Wrong token account")]
-    InvalidTokenAccount
+    InvalidTokenAccount,
+    #[msg("No unclaimed tokens left")]
+    NoUnclaimedTokens,
+    #[msg("PDA does not have authority over pool")]
+    InvalidPoolAuthority
 }
