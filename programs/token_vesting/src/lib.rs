@@ -7,7 +7,7 @@ declare_id!("DzJ68fvNC6PNfZYQzjSNiyLxgcxHD3nkRGsBAjyGTWyd");
 pub mod token_vesting {
 
     use super::*;
-    //when creating the token account, the owner should setAuthority for the amount of tokens to be vested to this contract's pda
+    // When creating the token account, the owner should setAuthority for the amount of tokens to be vested to this contract's pda
     pub fn initialize(ctx: Context<Initialize>, token_mint: Pubkey) -> Result<()> {
         let account_data = &mut ctx.accounts.account_data_account;
         account_data.percent_available = 0;
@@ -15,7 +15,8 @@ pub mod token_vesting {
         account_data.token_mint = token_mint;
         Ok(())
     }
-    
+
+    // Owner must create Vesting Account for each Beneficiary
     pub fn create_vesting_account(ctx: Context<CreateVestingAccount>, beneficiary: Pubkey, total_amount: u64) -> Result<()> {
         require!(*ctx.accounts.initializer.to_account_info().key == ctx.accounts.account_data.initializer, VestingError::NotInitializer);
 
@@ -26,11 +27,15 @@ pub mod token_vesting {
         Ok(())
     }
 
+    // Owner Releases `percent` % of tokens to all beneficiaries
     pub fn release(ctx: Context<Release>, percent: u8) -> Result<()>{
         require!(*ctx.accounts.sender.to_account_info().key == ctx.accounts.account_data_account.initializer, VestingError::NotInitializer);
+        
         ctx.accounts.account_data_account.percent_available = percent;
         Ok(())
     }
+
+    // Beneficiary calls `claim` to claim tokens
     pub fn claim(ctx: Context<Claim>) -> Result<()> {
         let vesting_account = &mut ctx.accounts.vesting_account;
         let account_data = &mut ctx.accounts.account_data_account;
@@ -51,7 +56,7 @@ pub mod token_vesting {
         };
 
         let signer_seeds: &[&[u8]] = &[b"vesting_pool", &[bump]];
-        let signer_slice = &[signer_seeds]; //have to do this b/c the value might be dropped before being used
+        let signer_slice = &[signer_seeds]; // have to do this b/c the value might be dropped before being used
         let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_slice);
         
         token::transfer(cpi_context, amount_to_claim)?;
