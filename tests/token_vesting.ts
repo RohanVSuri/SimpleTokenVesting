@@ -1,6 +1,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { TokenVesting } from "../target/types/token_vesting";
+import * as spl from '@solana/spl-token';
 
 describe("token_vesting", () => {
   // Configure the client to use the local cluster.
@@ -10,22 +11,28 @@ describe("token_vesting", () => {
   const program = anchor.workspace.TokenVesting as Program<TokenVesting>;
 
   const account = anchor.web3.Keypair.generate();
-  console.log(account);
   it("Is initialized!", async () => {
-    // Add your test here.
-    // const vestingAccounts = [
-    //   {
-    //     beneficiary: new PublicKey('BeneficiaryPublicKey1'),
-    //     total_amount: 1000,
-    //   },
-    //   {
-    //     beneficiary: new PublicKey('BeneficiaryPublicKey2'),
-    //     total_amount: 2000,
-    //   },
-    //   // Add more vesting accounts as needed
-    // ];
 
-    // const tx = await program.methods.initialize().accounts({}).signers([account]).rpc();
+    const toKp = anchor.web3.Keypair.generate();
+
+    // Create a new mint and initialize it
+    // const mintKp = anchor.web3.Keypair.generate();
+    // console.log("before");
+    // const mint = await spl.createMint(
+    //   program.provider.connection,
+    //   account,
+    //   account.publicKey,
+    //   null,
+    //   0
+    // );
+    // console.log("after");
+
+
+
+    // const tx = await program.methods.initialize().accounts({
+
+    // }).signers([account]).rpc();
+
     // console.log("Your transaction signature", tx);
   });
 });

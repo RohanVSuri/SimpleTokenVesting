@@ -6,8 +6,6 @@ declare_id!("DzJ68fvNC6PNfZYQzjSNiyLxgcxHD3nkRGsBAjyGTWyd");
 #[program]
 pub mod token_vesting {
 
-    use anchor_spl::token_interface::accessor::amount;
-
     use super::*;
     // When creating the token account, the owner should setAuthority for the amount of tokens to be vested to this contract's pda
     pub fn initialize(ctx: Context<Initialize>, token_mint: Pubkey) -> Result<()> {
@@ -47,6 +45,7 @@ pub mod token_vesting {
         require!(vesting_account.claimed_amount < claimable_amount, VestingError::NoUnclaimedTokens);
         
         let amount_to_claim = claimable_amount - vesting_account.claimed_amount;
+
         let (pda, bump) = Pubkey::find_program_address(&[b"vesting_pool"], ctx.program_id);
         require!(ctx.accounts.vesting_pool.owner == pda, VestingError::InvalidPoolAuthority);
 
@@ -113,8 +112,8 @@ pub struct Claim<'info>{
     pub vesting_pool: Account<'info, TokenAccount>
 }
 
-#[account]
-#[derive(Default)]
+// #[account]
+// #[derive(Default)]
 pub struct VestingAccount{
     pub beneficiary: Pubkey,
     pub total_amount: u64,
@@ -125,8 +124,12 @@ pub struct VestingAccount{
 #[derive(Default)]
 pub struct AccountData{
     pub percent_available: u8,
+    pub token_amount: u64,
     pub initializer: Pubkey,
-    pub token_mint: Pubkey
+    pub token_mint: Pubkey,
+    pub escrow_wallet: Pubkey,
+    pub stage: u8,
+    // pub beneficiaries: Vec<Pubkey>,
 
 }
 
