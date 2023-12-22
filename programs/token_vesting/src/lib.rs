@@ -1,143 +1,180 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer};
+use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
 declare_id!("DzJ68fvNC6PNfZYQzjSNiyLxgcxHD3nkRGsBAjyGTWyd");
 
+
+// TODO:
+// - Complete Claim Function
+// - Implement Custom Errors
+// - Write Comprehensive Documentation & Test Cases
+// - 
 #[program]
 pub mod token_vesting {
 
-    use anchor_spl::token_interface::accessor::amount;
-
     use super::*;
-    // When creating the token account, the owner should setAuthority for the amount of tokens to be vested to this contract's pda
-    pub fn initialize(ctx: Context<Initialize>, token_mint: Pubkey) -> Result<()> {
+
+    pub fn initialize(
+        ctx: Context<InitializeNewVest>,
+        beneficiaries: Vec<Beneficiary>,
+        amount: u64,
+        data_bump: u8,
+        _escrow_bump: u8,
+    ) -> Result<()> {
+        msg!("ALLOCATED TOKENS: {}", beneficiaries[0].allocated_tokens);
         let account_data = &mut ctx.accounts.account_data_account;
+        account_data.beneficiaries = beneficiaries;
         account_data.percent_available = 0;
-        account_data.initializer = *ctx.accounts.initializer.to_account_info().key;
-        account_data.token_mint = token_mint;
-        Ok(())
-    }
+        account_data.token_amount = amount;
+        account_data.initializer = *ctx.accounts.sender.to_account_info().key;
+        account_data.escrow_wallet = *ctx.accounts.escrow_wallet.to_account_info().key;
+        account_data.token_mint = *ctx.accounts.token_mint.to_account_info().key;
 
-    // Owner must create Vesting Account for each Beneficiary
-    pub fn create_vesting_account(ctx: Context<CreateVestingAccount>, beneficiary: Pubkey, total_amount: u64) -> Result<()> {
-        require!(*ctx.accounts.initializer.to_account_info().key == ctx.accounts.account_data.initializer, VestingError::NotInitializer);
+        // msg!("account_data_account: {:?}", account_data.to_account_info().key);
+        // msg!("escrow_wallet: {:?}", ctx.accounts.escrow_wallet.to_account_info().key);
+        // msg!("wallet_to_withdraw_from: {:?}", ctx.accounts.wallet_to_withdraw_from.to_account_info().key);
+        // msg!("sender: {:?}", account_data.initializer);
+        // msg!("token_mint: {:?}", account_data.token_mint);
+        // account_data.token_amount = beneficiaries[0].allocated_tokens;
+        // account_data.beneficiaries = beneficiaries;
+        // account_data.reload()?;
+        // msg!("{}", account_data.beneficiaries[0].allocated_tokens);
 
-        let vesting_account = &mut ctx.accounts.vesting_account;
-        vesting_account.beneficiary = beneficiary;
-        vesting_account.total_amount = total_amount;
-        vesting_account.claimed_amount = 0;
-        Ok(())
-    }
-
-    // Owner Releases `percent` % of tokens to all beneficiaries
-    pub fn release(ctx: Context<Release>, percent: u8) -> Result<()>{
-        require!(*ctx.accounts.sender.to_account_info().key == ctx.accounts.account_data_account.initializer, VestingError::NotInitializer);
-        
-        ctx.accounts.account_data_account.percent_available = percent;
-        Ok(())
-    }
-
-    // Beneficiary calls `claim` to claim tokens
-    pub fn claim(ctx: Context<Claim>) -> Result<()> {
-        let vesting_account = &mut ctx.accounts.vesting_account;
-        let account_data = &mut ctx.accounts.account_data_account;
-        require!(*ctx.accounts.sender.to_account_info().key == account_data.initializer, VestingError::NotInitializer);
-
-        let claimable_amount = vesting_account.total_amount * account_data.percent_available as u64/ 100;
-        require!(vesting_account.claimed_amount < claimable_amount, VestingError::NoUnclaimedTokens);
-        
-        let amount_to_claim = claimable_amount - vesting_account.claimed_amount;
-        let (pda, bump) = Pubkey::find_program_address(&[b"vesting_pool"], ctx.program_id);
-        require!(ctx.accounts.vesting_pool.owner == pda, VestingError::InvalidPoolAuthority);
-
-        let cpi_program = ctx.accounts.token_program.to_account_info();
-        let cpi_accounts = Transfer {
-            from: ctx.accounts.vesting_pool.to_account_info(),
-            to: ctx.accounts.to_ata.to_account_info(),
-            authority: ctx.accounts.vesting_pool.to_account_info(),
+        // Below is the actual instruction that we are going to send to the Token program.
+        let transfer_instruction = Transfer {
+            from: ctx.accounts.wallet_to_withdraw_from.to_account_info(),
+            to: ctx.accounts.escrow_wallet.to_account_info(),
+            authority: ctx.accounts.sender.to_account_info(),
         };
-
-        let signer_seeds: &[&[u8]] = &[b"vesting_pool", &[bump]];
-        let signer_slice = &[signer_seeds]; // have to do this b/c the value might be dropped before being used
-        let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_slice);
+        // let (pda, bump) = Pubkey::find_program_address(&[b"account_data", ctx.accounts.sender.key.as_ref()], ctx.program_id);
+        // require!(pda == *account_data.to_account_info().key, ErrorCode::RequireEqViolated);
+        // msg!("PDA: {:?}", pda);
         
-        token::transfer(cpi_context, amount_to_claim)?;
+        let seeds = &["account_data".as_bytes(), ctx.accounts.sender.key.as_ref(), &[data_bump]];
+        let signer_seeds = &[&seeds[..]];
+        let cpi_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            transfer_instruction,
+            signer_seeds
+        );
+        // The `?` at the end will cause the function to return early in case of an error.
+        // This pattern is common in Rust.
+        token::transfer(cpi_ctx, account_data.token_amount)?;
 
-        vesting_account.claimed_amount = amount_to_claim;
+        Ok(())
+    }
+
+    pub fn release(ctx: Context<Release>, _data_bump: u8, percent: u8 ) -> Result<()> {
+        let data_account = &mut ctx.accounts.account_data_account;
+
+        //for testing:
+        data_account.beneficiaries[0].claimed_tokens = 83;
+
+        require!(data_account.initializer == *ctx.accounts.sender.to_account_info().key, ErrorCode::RequireEqViolated);
+        require!(percent > 0, ErrorCode::RequireEqViolated);
+        data_account.percent_available = percent;
+        Ok(())
+    }
+
+    pub fn claim(ctx: Context<Claim>, _data_bump: u8) -> Result<()> {
+        let sender = &mut ctx.accounts.sender;
+        let data_account = &mut ctx.accounts.account_data_account;
+        let beneficiaries = &data_account.beneficiaries;
+
+        let beneficiary = beneficiaries.iter().find(|&beneficiary| beneficiary.key == *sender.to_account_info().key)
+        .ok_or(ErrorCode::RequireEqViolated)?;
+
+    // Use beneficiary here
+    println!("Found beneficiary: {}", beneficiary.key);
         Ok(())
     }
 }
 
-
-
 #[derive(Accounts)]
-pub struct Initialize<'info> {
-    #[account(init, payer = initializer, space = 32)] 
+#[instruction(data_bump: u8)]
+pub struct Claim<'info> {
+    #[account(
+        mut,
+        seeds = [b"account_data", sender.key().as_ref()], 
+        bump = data_bump,
+    )]
     pub account_data_account: Account<'info, AccountData>,
-
+    
     #[account(mut)]
-    pub initializer: Signer<'info>,
-    pub system_program: Program<'info, System>,
-
-}
-
-#[derive(Accounts)]
-pub struct CreateVestingAccount<'info> {
-    #[account(init, payer = initializer, space = 32)] 
-    pub vesting_account: Account<'info, VestingAccount>,
-    pub account_data: Account<'info, AccountData>,
-
-    #[account(mut)]
-    pub initializer: Signer<'info>,
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
-pub struct Release<'info> {
-    #[account(mut)]
-    pub account_data_account: Account<'info, AccountData>,
-    pub sender: Signer<'info>
-}
-
-#[derive(Accounts)]
-pub struct Claim<'info>{
     pub sender: Signer<'info>,
-    #[account(mut)]
-    pub vesting_account: Account<'info, VestingAccount>,
+    // #[account(mut)]
+    // pub beneficiary: Account<'info, Beneficiary>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(data_bump: u8)]
+pub struct Release<'info> {
+    #[account(
+        mut,
+        seeds = [b"account_data", sender.key().as_ref()], 
+        bump = data_bump,
+    )]
     pub account_data_account: Account<'info, AccountData>,
 
-    pub token_program: Program<'info, Token>,
+    #[account(mut)]
+    pub sender: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+// #[instruction(application_idx: u64, state_bump: u8, wallet_bump: u8)]
+pub struct InitializeNewVest<'info> {
+    #[account(
+        init,
+        payer = sender,
+        space = 8 + 1 + 8 + 32 + 32 + 32 + 1 + (4 + 50 * (32 + 8 + 8)), //can take 50 accounts to vest to
+        seeds = [b"account_data", sender.key().as_ref()], 
+        bump
+    )]
+    pub account_data_account: Account<'info, AccountData>,
+
+    #[account(
+        init,
+        payer = sender,
+        seeds=[b"escrow_wallet".as_ref(), sender.key().as_ref()],
+        bump,
+        token::mint=token_mint,
+        token::authority=account_data_account,
+    )]
+    pub escrow_wallet: Account<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        constraint=wallet_to_withdraw_from.owner == sender.key(),
+        constraint=wallet_to_withdraw_from.mint == token_mint.key()
+    )]
+    wallet_to_withdraw_from: Account<'info, TokenAccount>,
+
+    token_mint: Account<'info, Mint>,
 
     #[account(mut)]
-    pub to_ata: Account<'info, TokenAccount>,
-    pub vesting_pool: Account<'info, TokenAccount>
+    pub sender: Signer<'info>,
+    pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Default, Copy, Clone, AnchorSerialize, AnchorDeserialize)]
+pub struct Beneficiary {
+    pub key: Pubkey,           // 32
+    pub allocated_tokens: u64, // 8
+    pub claimed_tokens: u64,   // 8
 }
 
 #[account]
 #[derive(Default)]
-pub struct VestingAccount{
-    pub beneficiary: Pubkey,
-    pub total_amount: u64,
-    pub claimed_amount: u64
-}
-
-#[account]
-#[derive(Default)]
-pub struct AccountData{
-    pub percent_available: u8,
-    pub initializer: Pubkey,
-    pub token_mint: Pubkey
-
-}
-
-#[error_code]
-pub enum VestingError {
-    #[msg("Instruction sender is not initializer of contract")]
-    NotInitializer,
-    #[msg("Wrong token account")]
-    InvalidTokenAccount,
-    #[msg("No unclaimed tokens left")]
-    NoUnclaimedTokens,
-    #[msg("PDA does not have authority over pool")]
-    InvalidPoolAuthority
+pub struct AccountData {
+    // 8 + 1 + 8 + 32 + 32 + 32 + 1 + (4 + (100 * (32 + 8 + 8)))
+    pub percent_available: u8, // 1
+    pub token_amount: u64,     // 8
+    pub initializer: Pubkey,   // 32
+    pub escrow_wallet: Pubkey, // 32
+    pub token_mint: Pubkey,    // 32
+    // pub stage: u8, // 1
+    pub beneficiaries: Vec<Beneficiary>, // (4 + (n * (32 + 8 + 8)))
 }
