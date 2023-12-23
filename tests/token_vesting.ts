@@ -5,6 +5,7 @@ const { SystemProgram } = anchor.web3;
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import * as spl from '@solana/spl-token';
 import { token } from "@coral-xyz/anchor/dist/cjs/utils";
+import { min } from "bn.js";
 
 
 
@@ -59,7 +60,6 @@ describe("token_vesting", () => {
       lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
       signature: token_airdrop,
     });
-
     console.log("airdrop successful??");
 
     // Find ATA for the User
@@ -112,8 +112,7 @@ describe("token_vesting", () => {
     // );
 
     // const txFundToken2 = await provider.sendAndConfirm(txFundATA2, [user]);
-    console.log("second fund successful");
-    console.log(userATA.toBase58(), txFundToken);
+    console.log("creating & funding ata successful", userATA.toBase58(), txFundToken);
     return [user, userATA]
 
   }
@@ -155,31 +154,37 @@ describe("token_vesting", () => {
     //       console.log(`[${sender.publicKey.toBase58()}] Funded new account with 5 SOL: ${sigTxFund}`);
 
 
-    console.log("all success");
     // Create PDA's for account_data_account and escrow_wallet
+    let x = mintAddress.toBuffer();
     let [accountData, accountBump] = await anchor.web3.PublicKey.findProgramAddressSync(
-      [Buffer.from("account_data"), sender.publicKey.toBuffer()],
+      [Buffer.from("account_data"), mintAddress.toBuffer()],
       program.programId
     );
 
     let [escrowWallet, escrowBump] = await anchor.web3.PublicKey.findProgramAddressSync(
-      [Buffer.from("escrow_wallet"), sender.publicKey.toBuffer()],
+      [Buffer.from("escrow_wallet"), mintAddress.toBuffer()],
       program.programId
     );
     console.log("ACCTPDA: ", accountData);
     console.log("ESCROWPDA: ", escrowWallet);
+    
     // Create a test Beneficiary object to send into contract
-    const test_beneficiary = anchor.web3.Keypair.generate();
-    const beneficiary = [
+    const [beneficiary, beneficiaryATA] = await createUserAndATA(provider.connection, mintAddress);
+
+    const beneficiaryArray = [
       {
-        key: test_beneficiary.publicKey,
-        allocatedTokens: new anchor.BN(69),
+        key: beneficiary.publicKey,
+        allocatedTokens: new anchor.BN(100),
         claimedTokens: new anchor.BN(0),
       }
     ]
 
-    // Send initialize transaction
-    const tx = await program.methods.initialize(beneficiary, new anchor.BN(200000000), accountBump, escrowBump).accounts({
+    // Send initialize transaction  
+    // 2000000000
+    // 200000000
+    // 200000000
+    // 2000
+    const initTx = await program.methods.initialize(beneficiaryArray, new anchor.BN(2000), accountBump, escrowBump).accounts({
       accountDataAccount: accountData,
       escrowWallet: escrowWallet,
       walletToWithdrawFrom: senderATA,
@@ -189,20 +194,37 @@ describe("token_vesting", () => {
       tokenProgram: spl.TOKEN_PROGRAM_ID,
     }).signers([sender]).rpc();
 
-    console.log("Your transaction signature", tx);
+    console.log("Initialize transaction signature", initTx);
 
     let account = await program.account.accountData.fetch(accountData);
-    console.log(account.beneficiaries);
+    console.log(account);
 
-    const tx2 = await program.methods.release(accountBump, 43).accounts({
+    const releaseTx = await program.methods.release(accountBump, 43).accounts({
       accountDataAccount: accountData,
       sender: sender.publicKey,
+      tokenMint: mintAddress,
       systemProgram: anchor.web3.SystemProgram.programId,
     }).signers([sender]).rpc();
-
+    console.log("Release TX Sig: ", releaseTx)
+    
     let account2 = await program.account.accountData.fetch(accountData);
-    console.log(account2.beneficiaries);
+    console.log(account2);
     // const [x, y] = await readAccount(escrowWallet, provider);
     // console.log(x, y);
+
+    const claimTx = await program.methods.claim(accountBump, escrowBump).accounts({
+      accountDataAccount: accountData,
+      escrowWallet: escrowWallet,
+      sender: beneficiary.publicKey,
+      tokenMint: mintAddress,
+      walletToDepositTo: beneficiaryATA,
+      associatedTokenProgram: spl.ASSOCIATED_TOKEN_PROGRAM_ID,
+      tokenProgram: spl.TOKEN_PROGRAM_ID,
+      systemProgram: anchor.web3.SystemProgram.programId
+    }).signers([beneficiary]).rpc();
+
+    console.log("Claim TX Sig: ", claimTx);
+    let account3 = await program.account.accountData.fetch(accountData);
+    console.log(account3);
   });
 });
