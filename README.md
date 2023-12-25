@@ -8,7 +8,6 @@ The contract provides functionalities for initializing the contract with a token
 The contract supports the following primary functionalities:
 
 - Initialization (`initialize`): Set up the vesting contract with the necessary parameters, including the token mint address.
-- Creating Vesting Accounts (`create_vesting_account`): Initialize vesting accounts for beneficiaries with a specified total amount of tokens to be vested.
 - Releasing Tokens (`release`): Allows the contract initializer to release a specified percentage of tokens to all beneficiaries.
 - Claiming Tokens (`claim`): Beneficiaries can claim their vested tokens as per the released percentage.
 
@@ -24,22 +23,23 @@ Build the contract:
 ```console
 anchor build
 ```
+Test the contract:
+```console
+anchor test
+```
 
 ## Usage
 ### Step 1: Token Creation 
 - Before using the contract, you must create a token on Solana. This is the token that is going to be vested to all beneficiaries. 
 
 ### Step 2: Initialize the Contract
-- Call the `initialize` function with the public key of the created token mint
-
-### Step 3: Create Vesting Accounts
-- For each beneficiary, create a vesting account by calling `create_vesting_account` with the beneficiary's public key and the total amount of tokens to be vested
+- Call the `initialize` function with the public key of the created token mint, an array of all beneficiaries to be vested to, and bumps for PDA's of the Data Account & Escrow Account.
 
 ### Step 4: Releasing Tokens
-- When you are ready to release tokens to beneficiaries, call the `release` function specifying the percentage of tokens to be released
+- When you are ready to release tokens to beneficiaries, call the `release` function specifying the percentage of tokens to be released.
 
 ### Step 5: Claiming Tokens
-- Beneficiaries can then call the `claim` function to claim their vested tokens according to the released percentage:
+- Beneficiaries can then call the `claim` function to claim their vested tokens according to the released percentage.
 
 ## Author
 Bulit by Rohan Suri
