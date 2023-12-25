@@ -5,7 +5,6 @@ declare_id!("DzJ68fvNC6PNfZYQzjSNiyLxgcxHD3nkRGsBAjyGTWyd");
 
 
 // TODO:
-// - Complete Claim Function
 // - Implement Custom Errors
 // - Write Comprehensive Documentation & Test Cases
 // - 
@@ -24,11 +23,11 @@ pub mod token_vesting {
         account_data.escrow_wallet = ctx.accounts.escrow_wallet.to_account_info().key();
         account_data.token_mint = ctx.accounts.token_mint.to_account_info().key();
 
-        // msg!("account_data_account: {:?}", account_data.to_account_info().key);
-        // msg!("escrow_wallet: {:?}", ctx.accounts.escrow_wallet.to_account_info().key);
-        // msg!("wallet_to_withdraw_from: {:?}", ctx.accounts.wallet_to_withdraw_from.to_account_info().key);
-        // msg!("sender: {:?}", account_data.initializer);
-        // msg!("token_mint: {:?}", account_data.token_mint);
+        msg!("account_data_account: {:?}", account_data.to_account_info().key);
+        msg!("escrow_wallet: {:?}", ctx.accounts.escrow_wallet.to_account_info().key);
+        msg!("wallet_to_withdraw_from: {:?}", ctx.accounts.wallet_to_withdraw_from.to_account_info().key);
+        msg!("sender: {:?}", account_data.initializer);
+        msg!("token_mint: {:?}", account_data.token_mint);
         // account_data.token_amount = beneficiaries[0].allocated_tokens;
         // account_data.beneficiaries = beneficiaries;
         // account_data.reload()?;
@@ -55,6 +54,7 @@ pub mod token_vesting {
         // This pattern is common in Rust.
         msg!("token amount: {}", account_data.token_amount);
         token::transfer(cpi_ctx, account_data.token_amount * 1000000)?;
+        // token::transfer(cpi_ctx, account_data.token_amount )?;
 
         Ok(())
     }
@@ -82,7 +82,7 @@ pub mod token_vesting {
         let beneficiary_ata = &mut ctx.accounts.wallet_to_deposit_to;
 
         msg!("CLAIM IN RUST, DATA BUMP: {}", data_bump);
-        let beneficiary = beneficiaries.iter().find(|&beneficiary| beneficiary.key == *sender.to_account_info().key)
+        let (index, beneficiary) = beneficiaries.iter().enumerate().find(|(_, beneficiary)| beneficiary.key == *sender.to_account_info().key)
         .ok_or(ErrorCode::RequireEqViolated)?;
 
         let amount_to_transfer = ((data_account.percent_available as f32 / 100.0) * beneficiary.allocated_tokens as f32) as u64;
@@ -111,7 +111,7 @@ pub mod token_vesting {
         );
 
         token::transfer(cpi_ctx, amount_to_transfer * 1000000)?;
-        //update claimedTokens value
+        data_account.beneficiaries[index].claimed_tokens = amount_to_transfer;
         
         Ok(())
     }
@@ -221,6 +221,5 @@ pub struct AccountData {
     pub initializer: Pubkey,   // 32
     pub escrow_wallet: Pubkey, // 32
     pub token_mint: Pubkey,    // 32
-    // pub stage: u8, // 1
     pub beneficiaries: Vec<Beneficiary>, // (4 + (n * (32 + 8 + 8)))
 }

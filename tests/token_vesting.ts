@@ -1,9 +1,9 @@
 import * as anchor from "@coral-xyz/anchor";
-import { Program } from "@coral-xyz/anchor";
+import { Program, AnchorError } from "@coral-xyz/anchor";
 import { TokenVesting } from "../target/types/token_vesting";
 import * as spl from '@solana/spl-token';
 import * as assert from "assert";
-import {createMint, createUserAndATA, fundATA, getTokenBalanceWeb3, createPDA} from "./utils";
+import { createMint, createUserAndATA, fundATA, getTokenBalanceWeb3, createPDA } from "./utils";
 // Configure the client to use the local cluster.
 
 describe("token_vesting", () => {
@@ -82,6 +82,30 @@ describe("token_vesting", () => {
     // console.log("Release TX Sig: ", releaseTx)
     // console.log("Claim TX Sig: ", claimTx);
     assert.equal(await getTokenBalanceWeb3(beneficiaryATA, provider), 43); // Claim releases 43% of 100 tokens into beneficiary's account
+    try {
+      const claimTx2 = await program.methods.claim(dataBump, escrowBump).accounts({
+        accountDataAccount: dataAccount,
+        escrowWallet: escrowAccount,
+        sender: beneficiary.publicKey,
+        tokenMint: mintAddress,
+        walletToDepositTo: beneficiaryATA,
+        associatedTokenProgram: spl.ASSOCIATED_TOKEN_PROGRAM_ID,
+        tokenProgram: spl.TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId
+      }).signers([beneficiary]).rpc();
+      let account4 = await program.account.accountData.fetch(dataAccount);
+      console.log(account4);
+      console.log(await getTokenBalanceWeb3(beneficiaryATA, provider));
+      assert.ok(false, "Error was supposed to be thrown");
+    }catch(_err){
+      assert.equal(_err instanceof AnchorError, true);
+      const err: AnchorError = _err;
+      console.log(err);
+      // const errMsg =
+      //   "This is an error message clients will automatically display";
+      // assert.strictEqual(err.error.errorMessage, errMsg);
+      // assert.strictEqual(err.error.errorCode.number, 6000);
 
+    }
   });
 });
