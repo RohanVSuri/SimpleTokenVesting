@@ -7,14 +7,13 @@ declare_id!("DzJ68fvNC6PNfZYQzjSNiyLxgcxHD3nkRGsBAjyGTWyd");
 // TODO:
 // - Implement Custom Errors
 // - Write Comprehensive Documentation & Test Cases
-// - 
+// - add 'create_vesting_account' function for any beneficiaries that deployer did not add
 #[program]
 pub mod token_vesting {
 
     use super::*;
 
     pub fn initialize(ctx: Context<InitializeNewVest>, beneficiaries: Vec<Beneficiary>, amount: u64, data_bump: u8, _escrow_bump: u8) -> Result<()> {
-        msg!("ALLOCATED TOKENS: {}", beneficiaries[0].allocated_tokens);
         let account_data = &mut ctx.accounts.account_data_account;
         account_data.beneficiaries = beneficiaries;
         account_data.percent_available = 0;
@@ -22,39 +21,32 @@ pub mod token_vesting {
         account_data.initializer = ctx.accounts.sender.to_account_info().key();
         account_data.escrow_wallet = ctx.accounts.escrow_wallet.to_account_info().key();
         account_data.token_mint = ctx.accounts.token_mint.to_account_info().key();
+        
+        // Msg's for testing, these get shown in the block explorer:
+        // msg!("ALLOCATED TOKENS: {}", beneficiaries[0].allocated_tokens);
+        // msg!("account_data_account: {:?}", account_data.to_account_info().key);
+        // msg!("escrow_wallet: {:?}", ctx.accounts.escrow_wallet.to_account_info().key);
+        // msg!("wallet_to_withdraw_from: {:?}", ctx.accounts.wallet_to_withdraw_from.to_account_info().key);
+        // msg!("sender: {:?}", account_data.initializer);
+        // msg!("token_mint: {:?}", account_data.token_mint);
+        // msg!("token amount: {}", account_data.token_amount);
 
-        msg!("account_data_account: {:?}", account_data.to_account_info().key);
-        msg!("escrow_wallet: {:?}", ctx.accounts.escrow_wallet.to_account_info().key);
-        msg!("wallet_to_withdraw_from: {:?}", ctx.accounts.wallet_to_withdraw_from.to_account_info().key);
-        msg!("sender: {:?}", account_data.initializer);
-        msg!("token_mint: {:?}", account_data.token_mint);
-        // account_data.token_amount = beneficiaries[0].allocated_tokens;
-        // account_data.beneficiaries = beneficiaries;
-        // account_data.reload()?;
-        // msg!("{}", account_data.beneficiaries[0].allocated_tokens);
-
-        // Below is the actual instruction that we are going to send to the Token program.
         let transfer_instruction = Transfer {
             from: ctx.accounts.wallet_to_withdraw_from.to_account_info(),
             to: ctx.accounts.escrow_wallet.to_account_info(),
             authority: ctx.accounts.sender.to_account_info(),
         };
-        // let (pda, bump) = Pubkey::find_program_address(&[b"account_data", ctx.accounts.sender.key.as_ref()], ctx.program_id);
-        // require!(pda == *account_data.to_account_info().key, ErrorCode::RequireEqViolated);
-        // msg!("PDA: {:?}", pda);
         
         let seeds = &["account_data".as_bytes(), account_data.token_mint.as_ref(), &[data_bump]];
         let signer_seeds = &[&seeds[..]];
+
         let cpi_ctx = CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
             transfer_instruction,
             signer_seeds
         );
-        // The `?` at the end will cause the function to return early in case of an error.
-        // This pattern is common in Rust.
-        msg!("token amount: {}", account_data.token_amount);
+
         token::transfer(cpi_ctx, account_data.token_amount * 1000000)?;
-        // token::transfer(cpi_ctx, account_data.token_amount )?;
 
         Ok(())
     }
@@ -62,11 +54,8 @@ pub mod token_vesting {
     pub fn release(ctx: Context<Release>, _data_bump: u8, percent: u8 ) -> Result<()> {
         let data_account = &mut ctx.accounts.account_data_account;
 
-        //for testing:
-        // data_account.beneficiaries[0].claimed_tokens = 83;
+        require!(data_account.initializer == *ctx.accounts.sender.to_account_info().key, VestingError::InvalidSender); 
 
-        require!(data_account.initializer == *ctx.accounts.sender.to_account_info().key, ErrorCode::RequireEqViolated);
-        require!(percent > 0, ErrorCode::RequireEqViolated);
         data_account.percent_available = percent;
         Ok(())
     }
@@ -78,15 +67,15 @@ pub mod token_vesting {
         let beneficiaries = &data_account.beneficiaries;
         let token_program = &mut ctx.accounts.token_program;
         let token_mint_key = &mut ctx.accounts.token_mint.key();
-
         let beneficiary_ata = &mut ctx.accounts.wallet_to_deposit_to;
 
-        msg!("CLAIM IN RUST, DATA BUMP: {}", data_bump);
+        // msg!("CLAIM IN RUST, DATA BUMP: {}", data_bump);
         let (index, beneficiary) = beneficiaries.iter().enumerate().find(|(_, beneficiary)| beneficiary.key == *sender.to_account_info().key)
         .ok_or(ErrorCode::RequireEqViolated)?;
 
         let amount_to_transfer = ((data_account.percent_available as f32 / 100.0) * beneficiary.allocated_tokens as f32) as u64;
-        require!(amount_to_transfer > beneficiary.claimed_tokens, ErrorCode::RequireEqViolated); //allowed to claim new tokens
+        require!(amount_to_transfer > beneficiary.claimed_tokens, VestingError::ClaimNotAllowed); //allowed to claim new tokens
+
         msg!("amount to transfer: {}", amount_to_transfer);
         msg!("allocated_tokens: {}", beneficiary.allocated_tokens);
         msg!("tokens: {}", data_account.token_amount);
@@ -222,4 +211,12 @@ pub struct AccountData {
     pub escrow_wallet: Pubkey, // 32
     pub token_mint: Pubkey,    // 32
     pub beneficiaries: Vec<Beneficiary>, // (4 + (n * (32 + 8 + 8)))
+}
+
+#[error_code]
+pub enum VestingError {
+    #[msg("Sender is not owner of Data Account")]
+    InvalidSender,
+    #[msg("Not allowed to claim new tokens currently")]
+    ClaimNotAllowed,
 }
