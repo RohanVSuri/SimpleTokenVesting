@@ -4,39 +4,39 @@ import { TokenVesting } from "../target/types/token_vesting";
 import * as spl from '@solana/spl-token';
 import * as assert from "assert";
 import { createMint, createUserAndATA, fundATA, getTokenBalanceWeb3, createPDA } from "./utils";
-// Configure the client to use the local cluster.
 
 describe("token_vesting", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
   const program = anchor.workspace.TokenVesting as Program<TokenVesting>;
-  it("Is initialized!", async () => {
+  
+  let mintAddress, sender, senderATA, dataAccount, dataBump, escrowAccount, escrowBump, beneficiary, beneficiaryATA, beneficiaryArray;
 
-    const mintAddress = await createMint(provider);
-    const [sender, senderATA] = await createUserAndATA(provider, mintAddress);
-    const _ = await fundATA(provider, mintAddress, sender, senderATA);
-    let x = Buffer.from("account_data");
+  let _dataAccount; // Used to store State between tests
+
+  before(async () => {
+    mintAddress = await createMint(provider);
+    [sender, senderATA] = await createUserAndATA(provider, mintAddress);
+    await fundATA(provider, mintAddress, sender, senderATA);
+
     // Create PDA's for account_data_account and escrow_wallet
-    let [dataAccount, dataBump] = await createPDA([Buffer.from("account_data"), mintAddress.toBuffer()], program.programId);
-    let [escrowAccount, escrowBump] = await createPDA([Buffer.from("escrow_wallet"), mintAddress.toBuffer()], program.programId);
-
-    console.log("ACCTPDA: ", dataAccount);
-    console.log("ESCROWPDA: ", escrowAccount);
+    [dataAccount, dataBump] = await createPDA([Buffer.from("account_data"), mintAddress.toBuffer()], program.programId);
+    [escrowAccount, escrowBump] = await createPDA([Buffer.from("escrow_wallet"), mintAddress.toBuffer()], program.programId);
 
     // Create a test Beneficiary object to send into contract
-    const [beneficiary, beneficiaryATA] = await createUserAndATA(provider, mintAddress);
-    console.log("beneficiary ata: ", beneficiaryATA);
-
-    const beneficiaryArray = [
+    [beneficiary, beneficiaryATA] = await createUserAndATA(provider, mintAddress);
+    beneficiaryArray = [
       {
         key: beneficiary.publicKey,
         allocatedTokens: new anchor.BN(100),
         claimedTokens: new anchor.BN(0),
       }
     ]
+  });
+
+  it("Test Initialize", async () => {
     // Send initialize transaction  
     const initTx = await program.methods.initialize(beneficiaryArray, new anchor.BN(1000), dataBump, escrowBump).accounts({
-
       accountDataAccount: dataAccount,
       escrowWallet: escrowAccount,
       walletToWithdrawFrom: senderATA,
@@ -45,11 +45,17 @@ describe("token_vesting", () => {
       systemProgram: anchor.web3.SystemProgram.programId,
       tokenProgram: spl.TOKEN_PROGRAM_ID,
     }).signers([sender]).rpc();
+    let accountAfterInit = await program.account.accountData.fetch(dataAccount);
 
-    console.log("Initialize transaction signature", initTx);
+    assert.equal(await getTokenBalanceWeb3(escrowAccount, provider), 1000); // Escrow account receives balance of token
+    assert.equal(accountAfterInit.beneficiaries[0].allocatedTokens, 100); // Tests allocatedTokens field
+    console.log(`init TX: https://explorer.solana.com/tx/${initTx}?cluster=custom`)
 
-    let account = await program.account.accountData.fetch(dataAccount);
-    console.log(account);
+    _dataAccount = dataAccount;
+
+  });
+  it("Test Release", async () => {
+    dataAccount = _dataAccount;
 
     const releaseTx = await program.methods.release(dataBump, 43).accounts({
       accountDataAccount: dataAccount,
@@ -57,10 +63,17 @@ describe("token_vesting", () => {
       tokenMint: mintAddress,
       systemProgram: anchor.web3.SystemProgram.programId,
     }).signers([sender]).rpc();
-    console.log("Release TX Sig: ", releaseTx)
+    let accountAfterRelease = await program.account.accountData.fetch(dataAccount);
 
-    let account2 = await program.account.accountData.fetch(dataAccount);
-    console.log(account2);
+    assert.equal(accountAfterRelease.percentAvailable, 43); // Percent Available updated correctly
+    console.log(`release TX: https://explorer.solana.com/tx/${releaseTx}?cluster=custom`)
+
+    _dataAccount = dataAccount;
+  });
+
+  it("Test Claim", async () => {
+    // Send initialize transaction  
+    dataAccount = _dataAccount;
 
     const claimTx = await program.methods.claim(dataBump, escrowBump).accounts({
       accountDataAccount: dataAccount,
@@ -73,16 +86,17 @@ describe("token_vesting", () => {
       systemProgram: anchor.web3.SystemProgram.programId
     }).signers([beneficiary]).rpc();
 
-    let account3 = await program.account.accountData.fetch(dataAccount);
-    console.log(account3);
-    console.log(`init TX: https://explorer.solana.com/tx/${initTx}?cluster=custom`)
-    console.log(`release TX: https://explorer.solana.com/tx/${releaseTx}?cluster=custom`)
-    console.log(`claim TX: https://explorer.solana.com/tx/${claimTx}?cluster=custom`)
-    // console.log("Initialize transaction signature", initTx);
-    // console.log("Release TX Sig: ", releaseTx)
-    // console.log("Claim TX Sig: ", claimTx);
     assert.equal(await getTokenBalanceWeb3(beneficiaryATA, provider), 43); // Claim releases 43% of 100 tokens into beneficiary's account
+    assert.equal(await getTokenBalanceWeb3(escrowAccount, provider), 957);
+
+    console.log(`claim TX: https://explorer.solana.com/tx/${claimTx}?cluster=custom`)
+    _dataAccount = dataAccount;
+  });
+
+  it("Test Double Claim (Should Fail)", async () => {
+    dataAccount = _dataAccount;
     try {
+      // Should fail
       const claimTx2 = await program.methods.claim(dataBump, escrowBump).accounts({
         accountDataAccount: dataAccount,
         escrowWallet: escrowAccount,
@@ -93,19 +107,13 @@ describe("token_vesting", () => {
         tokenProgram: spl.TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId
       }).signers([beneficiary]).rpc();
-      let account4 = await program.account.accountData.fetch(dataAccount);
-      console.log(account4);
-      console.log(await getTokenBalanceWeb3(beneficiaryATA, provider));
       assert.ok(false, "Error was supposed to be thrown");
-    }catch(_err){
+    } catch (_err) {
       assert.equal(_err instanceof AnchorError, true);
       const err: AnchorError = _err;
-      console.log(err);
-      // const errMsg =
-      //   "This is an error message clients will automatically display";
-      // assert.strictEqual(err.error.errorMessage, errMsg);
-      // assert.strictEqual(err.error.errorCode.number, 6000);
-
+      assert.equal(err.error.errorCode.code, "ClaimNotAllowed");
+      assert.equal(await getTokenBalanceWeb3(beneficiaryATA, provider), 43);
+      // Check that error is thrown, that it's the ClaimNotAllowed error, and that the beneficiary's balance has not changed
     }
-  });
+  })
 });
