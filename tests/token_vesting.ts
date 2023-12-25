@@ -1,175 +1,31 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { TokenVesting } from "../target/types/token_vesting";
-const { SystemProgram } = anchor.web3;
-import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import * as spl from '@solana/spl-token';
-import { token } from "@coral-xyz/anchor/dist/cjs/utils";
-import { min } from "bn.js";
-
-
+import * as assert from "assert";
+import {createMint, createUserAndATA, fundATA, getTokenBalanceWeb3, createPDA} from "./utils";
+// Configure the client to use the local cluster.
 
 describe("token_vesting", () => {
-  // Configure the client to use the local cluster.
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
-
   const program = anchor.workspace.TokenVesting as Program<TokenVesting>;
-
-  const createMint = async (connection: anchor.web3.Connection): Promise<anchor.web3.PublicKey> => {
-    const tokenMint = new anchor.web3.Keypair();
-    const lamportsForMint = await provider.connection.getMinimumBalanceForRentExemption(spl.MintLayout.span);
-    let tx = new anchor.web3.Transaction();
-
-    // Allocate mint
-    tx.add(
-      anchor.web3.SystemProgram.createAccount({
-        programId: spl.TOKEN_PROGRAM_ID,
-        space: spl.MintLayout.span,
-        fromPubkey: provider.wallet.publicKey,
-        newAccountPubkey: tokenMint.publicKey,
-        lamports: lamportsForMint,
-      })
-    )
-    // Allocate wallet account
-    tx.add(
-      spl.createInitializeMintInstruction(
-        tokenMint.publicKey,
-        6,
-        provider.wallet.publicKey,
-        provider.wallet.publicKey,
-        spl.TOKEN_PROGRAM_ID,
-      )
-    );
-    const signature = await provider.sendAndConfirm(tx, [tokenMint]);
-
-    console.log(`[${tokenMint.publicKey}] Created new mint account at ${signature}`);
-    return tokenMint.publicKey;
-  }
-
-  const createUserAndATA = async (connection: anchor.web3.Connection, mint: anchor.web3.PublicKey): Promise<[anchor.web3.Keypair, anchor.web3.PublicKey | undefined]> => {
-    // Create the User, fund with 10 SOL to be able to execute tx's
-    const user = anchor.web3.Keypair.generate();
-    let token_airdrop = await provider.connection.requestAirdrop(user.publicKey,
-      10 * LAMPORTS_PER_SOL);
-
-    const latestBlockHash = await provider.connection.getLatestBlockhash();
-
-    await provider.connection.confirmTransaction({
-      blockhash: latestBlockHash.blockhash,
-      lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-      signature: token_airdrop,
-    });
-    console.log("airdrop successful??");
-
-    // Find ATA for the User
-    let userATA = await spl.getAssociatedTokenAddress(
-      mint,
-      user.publicKey,
-      false,
-      spl.TOKEN_PROGRAM_ID,
-      spl.ASSOCIATED_TOKEN_PROGRAM_ID
-    );
-    console.log("userata finding successful");
-    // Create TX to mint tokens to the User
-    const txFundATA = new anchor.web3.Transaction();
-    
-    txFundATA.add(
-      spl.createAssociatedTokenAccountInstruction(
-        user.publicKey,
-        userATA,
-        user.publicKey,
-        mint,
-        spl.TOKEN_PROGRAM_ID,
-        spl.ASSOCIATED_TOKEN_PROGRAM_ID
-      )
-    );
-
-    txFundATA.add(
-      spl.createMintToInstruction(
-        mint,
-        userATA,
-        provider.wallet.publicKey,
-        2000000000,
-        [],
-        spl.TOKEN_PROGRAM_ID
-      )
-    );
-    const txFundToken = await provider.sendAndConfirm(txFundATA, [user]);
-    // console.log("first fund successful");
-
-    // const txFundATA2 = new anchor.web3.Transaction();
-
-    // txFundATA2.add(
-    //   spl.createMintToInstruction(
-    //     mint,
-    //     userATA,
-    //     provider.wallet.publicKey,
-    //     2000000000,
-    //     [],
-    //     spl.TOKEN_PROGRAM_ID
-    //   )
-    // );
-
-    // const txFundToken2 = await provider.sendAndConfirm(txFundATA2, [user]);
-    console.log("creating & funding ata successful", userATA.toBase58(), txFundToken);
-    return [user, userATA]
-
-  }
-//   const readAccount = async (accountPublicKey: anchor.web3.PublicKey, provider: anchor.Provider): Promise<[spl.AccountInfo, string]> => {
-//     const tokenInfoLol = await provider.connection.getAccountInfo(accountPublicKey);
-//     const data = Buffer.from(tokenInfoLol.data);
-//     const accountInfo = spl.AccountLayout.decode(data);
-//     console.log(accountInfo);
-
-//     const amount = (accountInfo.amount as any as Buffer).readBigUInt64LE();
-//     return [accountInfo, amount.toString()];
-// }
-
   it("Is initialized!", async () => {
-    
-    const mintAddress = await createMint(provider.connection);
-    const [sender, senderATA] = await createUserAndATA(provider.connection, mintAddress);
 
-    // Airdrop sender wallet with 10 SOL so that they can send the tx
-    // const sender = anchor.web3.Keypair.generate();
-    // let token_airdrop = await provider.connection.requestAirdrop(sender.publicKey,
-    //   10 * LAMPORTS_PER_SOL);
-
-    // const latestBlockHash = await provider.connection.getLatestBlockhash();
-    // await provider.connection.confirmTransaction({
-    //   blockhash: latestBlockHash.blockhash,
-    //   lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-    //   signature: token_airdrop,
-    // });
-
-
-    //  let txFund = new anchor.web3.Transaction();
-    //       txFund.add(anchor.web3.SystemProgram.transfer({
-    //           fromPubkey: provider.wallet.publicKey,
-    //           toPubkey: sender.publicKey,
-    //           lamports: 5 * anchor.web3.LAMPORTS_PER_SOL,
-    //       }));
-    //       const sigTxFund = await provider.sendAndConfirm(txFund);
-    //       console.log(`[${sender.publicKey.toBase58()}] Funded new account with 5 SOL: ${sigTxFund}`);
-
-
+    const mintAddress = await createMint(provider);
+    const [sender, senderATA] = await createUserAndATA(provider, mintAddress);
+    const _ = await fundATA(provider, mintAddress, sender, senderATA);
+    let x = Buffer.from("account_data");
     // Create PDA's for account_data_account and escrow_wallet
-    let x = mintAddress.toBuffer();
-    let [accountData, accountBump] = await anchor.web3.PublicKey.findProgramAddressSync(
-      [Buffer.from("account_data"), mintAddress.toBuffer()],
-      program.programId
-    );
+    let [dataAccount, dataBump] = await createPDA([Buffer.from("account_data"), mintAddress.toBuffer()], program.programId);
+    let [escrowAccount, escrowBump] = await createPDA([Buffer.from("escrow_wallet"), mintAddress.toBuffer()], program.programId);
 
-    let [escrowWallet, escrowBump] = await anchor.web3.PublicKey.findProgramAddressSync(
-      [Buffer.from("escrow_wallet"), mintAddress.toBuffer()],
-      program.programId
-    );
-    console.log("ACCTPDA: ", accountData);
-    console.log("ESCROWPDA: ", escrowWallet);
-    
+    console.log("ACCTPDA: ", dataAccount);
+    console.log("ESCROWPDA: ", escrowAccount);
+
     // Create a test Beneficiary object to send into contract
-    const [beneficiary, beneficiaryATA] = await createUserAndATA(provider.connection, mintAddress);
+    const [beneficiary, beneficiaryATA] = await createUserAndATA(provider, mintAddress);
+    console.log("beneficiary ata: ", beneficiaryATA);
 
     const beneficiaryArray = [
       {
@@ -178,15 +34,11 @@ describe("token_vesting", () => {
         claimedTokens: new anchor.BN(0),
       }
     ]
-
     // Send initialize transaction  
-    // 2000000000
-    // 200000000
-    // 200000000
-    // 2000
-    const initTx = await program.methods.initialize(beneficiaryArray, new anchor.BN(2000), accountBump, escrowBump).accounts({
-      accountDataAccount: accountData,
-      escrowWallet: escrowWallet,
+    const initTx = await program.methods.initialize(beneficiaryArray, new anchor.BN(1000), dataBump, escrowBump).accounts({
+
+      accountDataAccount: dataAccount,
+      escrowWallet: escrowAccount,
       walletToWithdrawFrom: senderATA,
       tokenMint: mintAddress,
       sender: sender.publicKey,
@@ -196,25 +48,23 @@ describe("token_vesting", () => {
 
     console.log("Initialize transaction signature", initTx);
 
-    let account = await program.account.accountData.fetch(accountData);
+    let account = await program.account.accountData.fetch(dataAccount);
     console.log(account);
 
-    const releaseTx = await program.methods.release(accountBump, 43).accounts({
-      accountDataAccount: accountData,
+    const releaseTx = await program.methods.release(dataBump, 43).accounts({
+      accountDataAccount: dataAccount,
       sender: sender.publicKey,
       tokenMint: mintAddress,
       systemProgram: anchor.web3.SystemProgram.programId,
     }).signers([sender]).rpc();
     console.log("Release TX Sig: ", releaseTx)
-    
-    let account2 = await program.account.accountData.fetch(accountData);
-    console.log(account2);
-    // const [x, y] = await readAccount(escrowWallet, provider);
-    // console.log(x, y);
 
-    const claimTx = await program.methods.claim(accountBump, escrowBump).accounts({
-      accountDataAccount: accountData,
-      escrowWallet: escrowWallet,
+    let account2 = await program.account.accountData.fetch(dataAccount);
+    console.log(account2);
+
+    const claimTx = await program.methods.claim(dataBump, escrowBump).accounts({
+      accountDataAccount: dataAccount,
+      escrowWallet: escrowAccount,
       sender: beneficiary.publicKey,
       tokenMint: mintAddress,
       walletToDepositTo: beneficiaryATA,
@@ -223,8 +73,15 @@ describe("token_vesting", () => {
       systemProgram: anchor.web3.SystemProgram.programId
     }).signers([beneficiary]).rpc();
 
-    console.log("Claim TX Sig: ", claimTx);
-    let account3 = await program.account.accountData.fetch(accountData);
+    let account3 = await program.account.accountData.fetch(dataAccount);
     console.log(account3);
+    console.log(`init TX: https://explorer.solana.com/tx/${initTx}?cluster=custom`)
+    console.log(`release TX: https://explorer.solana.com/tx/${releaseTx}?cluster=custom`)
+    console.log(`claim TX: https://explorer.solana.com/tx/${claimTx}?cluster=custom`)
+    // console.log("Initialize transaction signature", initTx);
+    // console.log("Release TX Sig: ", releaseTx)
+    // console.log("Claim TX Sig: ", claimTx);
+    assert.equal(await getTokenBalanceWeb3(beneficiaryATA, provider), 43); // Claim releases 43% of 100 tokens into beneficiary's account
+
   });
 });
