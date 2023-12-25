@@ -35,10 +35,10 @@ anchor test
 ### Step 2: Initialize the Contract
 - Call the `initialize` function with the public key of the created token mint, an array of all beneficiaries to be vested to, and bumps for PDA's of the Data Account & Escrow Account.
 
-### Step 4: Releasing Tokens
+### Step 3: Releasing Tokens
 - When you are ready to release tokens to beneficiaries, call the `release` function specifying the percentage of tokens to be released.
 
-### Step 5: Claiming Tokens
+### Step 4: Claiming Tokens
 - Beneficiaries can then call the `claim` function to claim their vested tokens according to the released percentage.
 
 ## Author
