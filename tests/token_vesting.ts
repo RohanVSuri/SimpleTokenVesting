@@ -10,14 +10,15 @@ describe("token_vesting", () => {
   anchor.setProvider(provider);
   const program = anchor.workspace.TokenVesting as Program<TokenVesting>;
 
-  let mintAddress, sender, senderATA, dataAccount, dataBump, escrowWallet, escrowBump, beneficiary, beneficiaryATA, beneficiaryArray;
+  let mintAddress, sender, senderATA, dataAccount, dataBump, escrowWallet, escrowBump, beneficiary, beneficiaryATA, beneficiaryArray, decimals;
 
   let _dataAccountAfterInit, _dataAccountAfterRelease, _dataAccountAfterClaim; // Used to store State between tests
  
   before(async () => {
-    mintAddress = await createMint(provider);
+    decimals = 6;
+    mintAddress = await createMint(provider, decimals);
     [sender, senderATA] = await createUserAndATA(provider, mintAddress);
-    await fundATA(provider, mintAddress, sender, senderATA);
+    await fundATA(provider, mintAddress, sender, senderATA, decimals);
 
     // Create PDA's for account_data_account and escrow_wallet
     [dataAccount, dataBump] = await createPDA([Buffer.from("data_account"), mintAddress.toBuffer()], program.programId);
@@ -36,7 +37,7 @@ describe("token_vesting", () => {
 
   it("Test Initialize", async () => {
     // Send initialize transaction  
-    const initTx = await program.methods.initialize(beneficiaryArray, new anchor.BN(1000), dataBump, escrowBump).accounts({
+    const initTx = await program.methods.initialize(beneficiaryArray, new anchor.BN(1000), decimals, dataBump, escrowBump).accounts({
       dataAccount: dataAccount,
       escrowWallet: escrowWallet,
       walletToWithdrawFrom: senderATA,
@@ -47,14 +48,17 @@ describe("token_vesting", () => {
     }).signers([sender]).rpc();
 
     let accountAfterInit = await program.account.dataAccount.fetch(dataAccount);
+    
+    console.log(`init TX: https://explorer.solana.com/tx/${initTx}?cluster=custom`)
 
     assert.equal(await getTokenBalanceWeb3(escrowWallet, provider), 1000); // Escrow account receives balance of token
     assert.equal(accountAfterInit.beneficiaries[0].allocatedTokens, 100); // Tests allocatedTokens field
-    console.log(`init TX: https://explorer.solana.com/tx/${initTx}?cluster=custom`)
+    
 
     _dataAccountAfterInit = dataAccount;
 
   });
+
   it("Test Release With False Sender" , async () => {
     dataAccount = _dataAccountAfterInit;
 
@@ -72,9 +76,7 @@ describe("token_vesting", () => {
       assert.equal(err instanceof AnchorError, true);
       assert.equal(err.error.errorCode.code, "InvalidSender");
     }
-    // let accountAfterRelease = await program.account.accountData.fetch(dataAccount);
 
-    // assert.equal(accountAfterRelease.percentAvailable, 43); // Percent Available updated correctly
 
   });
 
@@ -87,10 +89,11 @@ describe("token_vesting", () => {
       tokenMint: mintAddress,
       systemProgram: anchor.web3.SystemProgram.programId,
     }).signers([sender]).rpc();
+
     let accountAfterRelease = await program.account.dataAccount.fetch(dataAccount);
+    console.log(`release TX: https://explorer.solana.com/tx/${releaseTx}?cluster=custom`)
 
     assert.equal(accountAfterRelease.percentAvailable, 43); // Percent Available updated correctly
-    console.log(`release TX: https://explorer.solana.com/tx/${releaseTx}?cluster=custom`)
 
     _dataAccountAfterRelease = dataAccount;
   });
@@ -109,11 +112,12 @@ describe("token_vesting", () => {
       tokenProgram: spl.TOKEN_PROGRAM_ID,
       systemProgram: anchor.web3.SystemProgram.programId
     }).signers([beneficiary]).rpc();
+    console.log(`claim TX: https://explorer.solana.com/tx/${claimTx}?cluster=custom`)
 
     assert.equal(await getTokenBalanceWeb3(beneficiaryATA, provider), 43); // Claim releases 43% of 100 tokens into beneficiary's account
     assert.equal(await getTokenBalanceWeb3(escrowWallet, provider), 957);
 
-    console.log(`claim TX: https://explorer.solana.com/tx/${claimTx}?cluster=custom`)
+    
     _dataAccountAfterClaim = dataAccount;
   });
 
@@ -157,7 +161,6 @@ describe("token_vesting", () => {
       }).signers([falseBeneficiary]).rpc();
 
     }catch(err) {
-      // console.log(err);
       assert.equal(err instanceof AnchorError, true);
       assert.equal(err.error.errorCode.code, "BeneficiaryNotFound");
     }

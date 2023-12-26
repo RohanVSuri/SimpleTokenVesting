@@ -2,7 +2,7 @@ import * as spl from '@solana/spl-token';
 import * as anchor from "@coral-xyz/anchor";
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 
-export const createMint = async (provider: anchor.AnchorProvider): Promise<anchor.web3.PublicKey> => {
+export const createMint = async (provider: anchor.AnchorProvider, decimals: number): Promise<anchor.web3.PublicKey> => {
     const tokenMint = new anchor.web3.Keypair();
     const lamportsForMint = await provider.connection.getMinimumBalanceForRentExemption(spl.MintLayout.span);
     let tx = new anchor.web3.Transaction();
@@ -21,7 +21,7 @@ export const createMint = async (provider: anchor.AnchorProvider): Promise<ancho
     tx.add(
       spl.createInitializeMintInstruction(
         tokenMint.publicKey,
-        6,
+        decimals,
         provider.wallet.publicKey,
         provider.wallet.publicKey,
         spl.TOKEN_PROGRAM_ID,
@@ -61,7 +61,7 @@ export const createUserAndATA = async (provider: anchor.AnchorProvider, mint: an
     return [user, userATA];
   
   }
-export const fundATA = async (provider: anchor.AnchorProvider, mint: anchor.web3.PublicKey, user: anchor.web3.Keypair, userATA: anchor.web3.PublicKey): Promise<anchor.web3.PublicKey> => {
+export const fundATA = async (provider: anchor.AnchorProvider, mint: anchor.web3.PublicKey, user: anchor.web3.Keypair, userATA: anchor.web3.PublicKey, decimals: number): Promise<anchor.web3.PublicKey> => {
     // Create TX to mint tokens to the User
     const txFundATA = new anchor.web3.Transaction();
   
@@ -81,7 +81,8 @@ export const fundATA = async (provider: anchor.AnchorProvider, mint: anchor.web3
         mint,
         userATA,
         provider.wallet.publicKey,
-        2000000000,
+        2000 * 10 ** decimals,
+        // 2000000000,
         [],
         spl.TOKEN_PROGRAM_ID
       )

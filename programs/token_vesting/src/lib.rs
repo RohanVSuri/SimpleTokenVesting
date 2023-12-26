@@ -12,11 +12,12 @@ pub mod token_vesting {
 
     use super::*;
 
-    pub fn initialize(ctx: Context<InitializeNewVest>, beneficiaries: Vec<Beneficiary>, amount: u64, data_bump: u8, _escrow_bump: u8) -> Result<()> {
+    pub fn initialize(ctx: Context<InitializeNewVest>, beneficiaries: Vec<Beneficiary>, amount: u64, decimals: u8, data_bump: u8, _escrow_bump: u8) -> Result<()> {
         let data_account = &mut ctx.accounts.data_account;
         data_account.beneficiaries = beneficiaries;
         data_account.percent_available = 0;
         data_account.token_amount = amount;
+        data_account.decimals = decimals;
         data_account.initializer = ctx.accounts.sender.to_account_info().key();
         data_account.escrow_wallet = ctx.accounts.escrow_wallet.to_account_info().key();
         data_account.token_mint = ctx.accounts.token_mint.to_account_info().key();
@@ -36,7 +37,13 @@ pub mod token_vesting {
             signer_seeds
         );
 
-        token::transfer(cpi_ctx, data_account.token_amount * 1000000)?;
+        // token::transfer(cpi_ctx, data_account.token_amount * 1000000)?;
+        // token::transfer(cpi_ctx, data_account.token_amount )?;
+
+        token::transfer(cpi_ctx, data_account.token_amount * u64::pow(10, decimals as u32))?;
+        msg!("{}", data_account.token_amount );
+        msg!("{}", (10 ^ decimals) as u64);
+        msg!("{}", data_account.token_amount * (10 ^ decimals) as u64);
 
         Ok(())
     }
@@ -59,6 +66,7 @@ pub mod token_vesting {
         let token_program = &mut ctx.accounts.token_program;
         let token_mint_key = &mut ctx.accounts.token_mint.key();
         let beneficiary_ata = &mut ctx.accounts.wallet_to_deposit_to;
+        let decimals = data_account.decimals;
 
         let (index, beneficiary) = beneficiaries.iter().enumerate().find(|(_, beneficiary)| beneficiary.key == *sender.to_account_info().key)
         .ok_or(VestingError::BeneficiaryNotFound)?;
@@ -83,7 +91,8 @@ pub mod token_vesting {
             signer_seeds
         );
 
-        token::transfer(cpi_ctx, amount_to_transfer * 1000000)?;
+        token::transfer(cpi_ctx, amount_to_transfer * u64::pow(10, decimals as u32))?;
+        // token::transfer(cpi_ctx, amount_to_transfer * (10 ^ decimals) as u64)?;
         data_account.beneficiaries[index].claimed_tokens = amount_to_transfer;
         
         Ok(())
@@ -102,7 +111,7 @@ pub struct Claim<'info> {
     
     #[account(
         mut,
-        seeds=[b"escrow_wallet".as_ref(), token_mint.key().as_ref()], // MIGHT have to remove .as_ref() for b"escrow_wallet", if bugs try that
+        seeds=[b"escrow_wallet".as_ref(), token_mint.key().as_ref()],
         bump = wallet_bump,
     )]
     escrow_wallet: Account<'info, TokenAccount>,
@@ -146,7 +155,7 @@ pub struct InitializeNewVest<'info> {
     #[account(
         init,
         payer = sender,
-        space = 8 + 1 + 8 + 32 + 32 + 32 + 1 + (4 + 50 * (32 + 8 + 8)), // Can take 50 accounts to vest to
+        space = 8 + 1 + 8 + 32 + 32 + 32 + 1 + (4 + 50 * (32 + 8 + 8) + 1), // Can take 50 accounts to vest to
         seeds = [b"data_account", token_mint.key().as_ref()], 
         bump
     )]
@@ -194,6 +203,7 @@ pub struct DataAccount {
     pub escrow_wallet: Pubkey, // 32
     pub token_mint: Pubkey,    // 32
     pub beneficiaries: Vec<Beneficiary>, // (4 + (n * (32 + 8 + 8)))
+    pub decimals: u8           // 1
 }
 
 #[error_code]
