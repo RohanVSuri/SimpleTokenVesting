@@ -29,7 +29,7 @@ export const createMint = async (provider: anchor.AnchorProvider): Promise<ancho
     );
     const signature = await provider.sendAndConfirm(tx, [tokenMint]);
   
-    console.log(`[${tokenMint.publicKey}] Created new mint account at ${signature}`);
+    // console.log(`[${tokenMint.publicKey}] Created new mint account at ${signature}`);
     return tokenMint.publicKey;
   }
   
@@ -46,7 +46,7 @@ export const createUserAndATA = async (provider: anchor.AnchorProvider, mint: an
       lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
       signature: token_airdrop,
     });
-    console.log("airdrop successful??");
+    // console.log("airdrop successful??");
   
     // Find ATA for the User
     let userATA = await spl.getAssociatedTokenAddress(
@@ -57,7 +57,7 @@ export const createUserAndATA = async (provider: anchor.AnchorProvider, mint: an
       spl.ASSOCIATED_TOKEN_PROGRAM_ID
     );
   
-    console.log("userata finding successful");
+    // console.log("userata finding successful");
     return [user, userATA];
   
   }

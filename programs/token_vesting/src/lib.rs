@@ -5,7 +5,6 @@ declare_id!("DzJ68fvNC6PNfZYQzjSNiyLxgcxHD3nkRGsBAjyGTWyd");
 
 
 // TODO:
-// - Implement Custom Errors
 // - Write Comprehensive Documentation & Test Cases
 // - add 'create_vesting_account' function for any beneficiaries that deployer did not add
 #[program]
@@ -55,6 +54,7 @@ pub mod token_vesting {
         let data_account = &mut ctx.accounts.account_data_account;
 
         require!(data_account.initializer == *ctx.accounts.sender.to_account_info().key, VestingError::InvalidSender); 
+        // Here we are testing the Public Key because Solana won't let you sign a transaction with conflicting signers & sender fields
 
         data_account.percent_available = percent;
         Ok(())
@@ -71,14 +71,14 @@ pub mod token_vesting {
 
         // msg!("CLAIM IN RUST, DATA BUMP: {}", data_bump);
         let (index, beneficiary) = beneficiaries.iter().enumerate().find(|(_, beneficiary)| beneficiary.key == *sender.to_account_info().key)
-        .ok_or(ErrorCode::RequireEqViolated)?;
+        .ok_or(VestingError::BeneficiaryNotFound)?;
 
         let amount_to_transfer = ((data_account.percent_available as f32 / 100.0) * beneficiary.allocated_tokens as f32) as u64;
         require!(amount_to_transfer > beneficiary.claimed_tokens, VestingError::ClaimNotAllowed); //allowed to claim new tokens
 
-        msg!("amount to transfer: {}", amount_to_transfer);
-        msg!("allocated_tokens: {}", beneficiary.allocated_tokens);
-        msg!("tokens: {}", data_account.token_amount);
+        // msg!("amount to transfer: {}", amount_to_transfer);
+        // msg!("allocated_tokens: {}", beneficiary.allocated_tokens);
+        // msg!("tokens: {}", data_account.token_amount);
 
 
         // Transfer Logic:
@@ -219,4 +219,6 @@ pub enum VestingError {
     InvalidSender,
     #[msg("Not allowed to claim new tokens currently")]
     ClaimNotAllowed,
+    #[msg("Beneficiary does not exist in account")]
+    BeneficiaryNotFound
 }

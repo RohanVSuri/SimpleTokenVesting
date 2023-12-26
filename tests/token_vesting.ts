@@ -9,11 +9,11 @@ describe("token_vesting", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
   const program = anchor.workspace.TokenVesting as Program<TokenVesting>;
-  
+
   let mintAddress, sender, senderATA, dataAccount, dataBump, escrowAccount, escrowBump, beneficiary, beneficiaryATA, beneficiaryArray;
 
-  let _dataAccount; // Used to store State between tests
-
+  let _dataAccountAfterInit, _dataAccountAfterRelease, _dataAccountAfterClaim; // Used to store State between tests
+ 
   before(async () => {
     mintAddress = await createMint(provider);
     [sender, senderATA] = await createUserAndATA(provider, mintAddress);
@@ -51,11 +51,34 @@ describe("token_vesting", () => {
     assert.equal(accountAfterInit.beneficiaries[0].allocatedTokens, 100); // Tests allocatedTokens field
     console.log(`init TX: https://explorer.solana.com/tx/${initTx}?cluster=custom`)
 
-    _dataAccount = dataAccount;
+    _dataAccountAfterInit = dataAccount;
 
   });
+  it("Test Release With False Sender" , async () => {
+    dataAccount = _dataAccountAfterInit;
+
+    const falseSender = anchor.web3.Keypair.generate();
+    try {
+      const releaseTx = await program.methods.release(dataBump, 43).accounts({
+        accountDataAccount: dataAccount,
+        sender: falseSender.publicKey,
+        tokenMint: mintAddress,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      }).signers([falseSender]).rpc();
+      assert.ok(false, "Error was supposed to be thrown");
+    }catch(err) {
+      // console.log(_err);
+      assert.equal(err instanceof AnchorError, true);
+      assert.equal(err.error.errorCode.code, "InvalidSender");
+    }
+    // let accountAfterRelease = await program.account.accountData.fetch(dataAccount);
+
+    // assert.equal(accountAfterRelease.percentAvailable, 43); // Percent Available updated correctly
+
+  });
+
   it("Test Release", async () => {
-    dataAccount = _dataAccount;
+    dataAccount = _dataAccountAfterInit;
 
     const releaseTx = await program.methods.release(dataBump, 43).accounts({
       accountDataAccount: dataAccount,
@@ -68,12 +91,12 @@ describe("token_vesting", () => {
     assert.equal(accountAfterRelease.percentAvailable, 43); // Percent Available updated correctly
     console.log(`release TX: https://explorer.solana.com/tx/${releaseTx}?cluster=custom`)
 
-    _dataAccount = dataAccount;
+    _dataAccountAfterRelease = dataAccount;
   });
 
   it("Test Claim", async () => {
     // Send initialize transaction  
-    dataAccount = _dataAccount;
+    dataAccount = _dataAccountAfterRelease;
 
     const claimTx = await program.methods.claim(dataBump, escrowBump).accounts({
       accountDataAccount: dataAccount,
@@ -90,14 +113,14 @@ describe("token_vesting", () => {
     assert.equal(await getTokenBalanceWeb3(escrowAccount, provider), 957);
 
     console.log(`claim TX: https://explorer.solana.com/tx/${claimTx}?cluster=custom`)
-    _dataAccount = dataAccount;
+    _dataAccountAfterClaim = dataAccount;
   });
 
   it("Test Double Claim (Should Fail)", async () => {
-    dataAccount = _dataAccount;
+    dataAccount = _dataAccountAfterClaim;
     try {
       // Should fail
-      const claimTx2 = await program.methods.claim(dataBump, escrowBump).accounts({
+      const doubleClaimTx = await program.methods.claim(dataBump, escrowBump).accounts({
         accountDataAccount: dataAccount,
         escrowWallet: escrowAccount,
         sender: beneficiary.publicKey,
@@ -108,12 +131,34 @@ describe("token_vesting", () => {
         systemProgram: anchor.web3.SystemProgram.programId
       }).signers([beneficiary]).rpc();
       assert.ok(false, "Error was supposed to be thrown");
-    } catch (_err) {
-      assert.equal(_err instanceof AnchorError, true);
-      const err: AnchorError = _err;
+    } catch (err) {
+      assert.equal(err instanceof AnchorError, true);
       assert.equal(err.error.errorCode.code, "ClaimNotAllowed");
       assert.equal(await getTokenBalanceWeb3(beneficiaryATA, provider), 43);
       // Check that error is thrown, that it's the ClaimNotAllowed error, and that the beneficiary's balance has not changed
     }
-  })
+  });
+  it("Test Beneficiary Not Found (Should Fail)", async () => {
+    dataAccount = _dataAccountAfterClaim;
+    try {
+      // const falseBeneficiary = anchor.web3.Keypair.generate();
+      const [falseBeneficiary, falseBeneficiaryATA] = await createUserAndATA(provider, mintAddress);
+
+      const benNotFound = await program.methods.claim(dataBump, escrowBump).accounts({
+        accountDataAccount: dataAccount,
+        escrowWallet: escrowAccount,
+        sender: falseBeneficiary.publicKey,
+        tokenMint: mintAddress,
+        walletToDepositTo: falseBeneficiaryATA,
+        associatedTokenProgram: spl.ASSOCIATED_TOKEN_PROGRAM_ID,
+        tokenProgram: spl.TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId
+      }).signers([falseBeneficiary]).rpc();
+
+    }catch(err) {
+      // console.log(err);
+      assert.equal(err instanceof AnchorError, true);
+      assert.equal(err.error.errorCode.code, "BeneficiaryNotFound");
+    }
+  });
 });
