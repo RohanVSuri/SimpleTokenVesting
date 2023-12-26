@@ -10,7 +10,7 @@ describe("token_vesting", () => {
   anchor.setProvider(provider);
   const program = anchor.workspace.TokenVesting as Program<TokenVesting>;
 
-  let mintAddress, sender, senderATA, dataAccount, dataBump, escrowAccount, escrowBump, beneficiary, beneficiaryATA, beneficiaryArray;
+  let mintAddress, sender, senderATA, dataAccount, dataBump, escrowWallet, escrowBump, beneficiary, beneficiaryATA, beneficiaryArray;
 
   let _dataAccountAfterInit, _dataAccountAfterRelease, _dataAccountAfterClaim; // Used to store State between tests
  
@@ -20,8 +20,8 @@ describe("token_vesting", () => {
     await fundATA(provider, mintAddress, sender, senderATA);
 
     // Create PDA's for account_data_account and escrow_wallet
-    [dataAccount, dataBump] = await createPDA([Buffer.from("account_data"), mintAddress.toBuffer()], program.programId);
-    [escrowAccount, escrowBump] = await createPDA([Buffer.from("escrow_wallet"), mintAddress.toBuffer()], program.programId);
+    [dataAccount, dataBump] = await createPDA([Buffer.from("data_account"), mintAddress.toBuffer()], program.programId);
+    [escrowWallet, escrowBump] = await createPDA([Buffer.from("escrow_wallet"), mintAddress.toBuffer()], program.programId);
 
     // Create a test Beneficiary object to send into contract
     [beneficiary, beneficiaryATA] = await createUserAndATA(provider, mintAddress);
@@ -37,17 +37,18 @@ describe("token_vesting", () => {
   it("Test Initialize", async () => {
     // Send initialize transaction  
     const initTx = await program.methods.initialize(beneficiaryArray, new anchor.BN(1000), dataBump, escrowBump).accounts({
-      accountDataAccount: dataAccount,
-      escrowWallet: escrowAccount,
+      dataAccount: dataAccount,
+      escrowWallet: escrowWallet,
       walletToWithdrawFrom: senderATA,
       tokenMint: mintAddress,
       sender: sender.publicKey,
       systemProgram: anchor.web3.SystemProgram.programId,
       tokenProgram: spl.TOKEN_PROGRAM_ID,
     }).signers([sender]).rpc();
-    let accountAfterInit = await program.account.accountData.fetch(dataAccount);
 
-    assert.equal(await getTokenBalanceWeb3(escrowAccount, provider), 1000); // Escrow account receives balance of token
+    let accountAfterInit = await program.account.dataAccount.fetch(dataAccount);
+
+    assert.equal(await getTokenBalanceWeb3(escrowWallet, provider), 1000); // Escrow account receives balance of token
     assert.equal(accountAfterInit.beneficiaries[0].allocatedTokens, 100); // Tests allocatedTokens field
     console.log(`init TX: https://explorer.solana.com/tx/${initTx}?cluster=custom`)
 
@@ -60,7 +61,7 @@ describe("token_vesting", () => {
     const falseSender = anchor.web3.Keypair.generate();
     try {
       const releaseTx = await program.methods.release(dataBump, 43).accounts({
-        accountDataAccount: dataAccount,
+        dataAccount: dataAccount,
         sender: falseSender.publicKey,
         tokenMint: mintAddress,
         systemProgram: anchor.web3.SystemProgram.programId,
@@ -81,12 +82,12 @@ describe("token_vesting", () => {
     dataAccount = _dataAccountAfterInit;
 
     const releaseTx = await program.methods.release(dataBump, 43).accounts({
-      accountDataAccount: dataAccount,
+      dataAccount: dataAccount,
       sender: sender.publicKey,
       tokenMint: mintAddress,
       systemProgram: anchor.web3.SystemProgram.programId,
     }).signers([sender]).rpc();
-    let accountAfterRelease = await program.account.accountData.fetch(dataAccount);
+    let accountAfterRelease = await program.account.dataAccount.fetch(dataAccount);
 
     assert.equal(accountAfterRelease.percentAvailable, 43); // Percent Available updated correctly
     console.log(`release TX: https://explorer.solana.com/tx/${releaseTx}?cluster=custom`)
@@ -99,8 +100,8 @@ describe("token_vesting", () => {
     dataAccount = _dataAccountAfterRelease;
 
     const claimTx = await program.methods.claim(dataBump, escrowBump).accounts({
-      accountDataAccount: dataAccount,
-      escrowWallet: escrowAccount,
+      dataAccount: dataAccount,
+      escrowWallet: escrowWallet,
       sender: beneficiary.publicKey,
       tokenMint: mintAddress,
       walletToDepositTo: beneficiaryATA,
@@ -110,7 +111,7 @@ describe("token_vesting", () => {
     }).signers([beneficiary]).rpc();
 
     assert.equal(await getTokenBalanceWeb3(beneficiaryATA, provider), 43); // Claim releases 43% of 100 tokens into beneficiary's account
-    assert.equal(await getTokenBalanceWeb3(escrowAccount, provider), 957);
+    assert.equal(await getTokenBalanceWeb3(escrowWallet, provider), 957);
 
     console.log(`claim TX: https://explorer.solana.com/tx/${claimTx}?cluster=custom`)
     _dataAccountAfterClaim = dataAccount;
@@ -121,8 +122,8 @@ describe("token_vesting", () => {
     try {
       // Should fail
       const doubleClaimTx = await program.methods.claim(dataBump, escrowBump).accounts({
-        accountDataAccount: dataAccount,
-        escrowWallet: escrowAccount,
+        dataAccount: dataAccount,
+        escrowWallet: escrowWallet,
         sender: beneficiary.publicKey,
         tokenMint: mintAddress,
         walletToDepositTo: beneficiaryATA,
@@ -145,8 +146,8 @@ describe("token_vesting", () => {
       const [falseBeneficiary, falseBeneficiaryATA] = await createUserAndATA(provider, mintAddress);
 
       const benNotFound = await program.methods.claim(dataBump, escrowBump).accounts({
-        accountDataAccount: dataAccount,
-        escrowWallet: escrowAccount,
+        dataAccount: dataAccount,
+        escrowWallet: escrowWallet,
         sender: falseBeneficiary.publicKey,
         tokenMint: mintAddress,
         walletToDepositTo: falseBeneficiaryATA,
