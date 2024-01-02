@@ -2,6 +2,7 @@
 
 A Rust-based Anchor smart contract for a token vesting system on the Solana blockchain. The contract enables the creation of vesting accounts and the gradual release of tokens according to predefined vesting schedules.
 
+Code goes along with the blog post [HERE](https://medium.com/@rsuri_69071/solana-simple-token-vesting-program-explained-c6bca76e9683).
 ## Contract Overview
 This contract provides the ability to lock tokens under a PDA controlled by the contract, allocate a set amount of tokens to beneficiaries, release tokens to these accounts, and allows beneficiaries to claim their vested tokens. 
 
