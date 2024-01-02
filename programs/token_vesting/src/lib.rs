@@ -8,7 +8,7 @@ pub mod token_vesting {
 
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>, beneficiaries: Vec<Beneficiary>, amount: u64, decimals: u8, data_bump: u8) -> Result<()> {
+    pub fn initialize(ctx: Context<Initialize>, beneficiaries: Vec<Beneficiary>, amount: u64, decimals: u8) -> Result<()> {
         let data_account = &mut ctx.accounts.data_account;
         data_account.beneficiaries = beneficiaries;
         data_account.percent_available = 0;
@@ -23,14 +23,10 @@ pub mod token_vesting {
             to: ctx.accounts.escrow_wallet.to_account_info(),
             authority: ctx.accounts.sender.to_account_info(),
         };
-        
-        let seeds = &["data_account".as_bytes(), data_account.token_mint.as_ref(), &[data_bump]];
-        let signer_seeds = &[&seeds[..]];
 
-        let cpi_ctx = CpiContext::new_with_signer(
+        let cpi_ctx = CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
             transfer_instruction,
-            signer_seeds
         );
 
         token::transfer(cpi_ctx, data_account.token_amount * u64::pow(10, decimals as u32))?;
@@ -40,7 +36,7 @@ pub mod token_vesting {
 
     pub fn release(ctx: Context<Release>, _data_bump: u8, percent: u8 ) -> Result<()> {
         let data_account = &mut ctx.accounts.data_account;
-        
+
         data_account.percent_available = percent;
         Ok(())
     }
@@ -156,7 +152,7 @@ pub struct Claim<'info> {
         seeds=[b"escrow_wallet".as_ref(), token_mint.key().as_ref()],
         bump = wallet_bump,
     )]
-    escrow_wallet: Account<'info, TokenAccount>,
+    pub escrow_wallet: Account<'info, TokenAccount>,
 
     #[account(mut)]
     pub sender: Signer<'info>,

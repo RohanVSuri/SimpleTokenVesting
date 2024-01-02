@@ -37,7 +37,7 @@ describe("token_vesting", () => {
 
   it("Test Initialize", async () => {
     // Send initialize transaction  
-    const initTx = await program.methods.initialize(beneficiaryArray, new anchor.BN(1000), decimals, dataBump).accounts({
+    const initTx = await program.methods.initialize(beneficiaryArray, new anchor.BN(1000), decimals).accounts({
       dataAccount: dataAccount,
       escrowWallet: escrowWallet,
       walletToWithdrawFrom: senderATA,
