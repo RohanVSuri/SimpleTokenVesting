@@ -8,7 +8,7 @@ pub mod token_vesting {
 
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>, beneficiaries: Vec<Beneficiary>, amount: u64, decimals: u8, data_bump: u8, _escrow_bump: u8) -> Result<()> {
+    pub fn initialize(ctx: Context<Initialize>, beneficiaries: Vec<Beneficiary>, amount: u64, decimals: u8, data_bump: u8) -> Result<()> {
         let data_account = &mut ctx.accounts.data_account;
         data_account.beneficiaries = beneficiaries;
         data_account.percent_available = 0;
@@ -40,10 +40,7 @@ pub mod token_vesting {
 
     pub fn release(ctx: Context<Release>, _data_bump: u8, percent: u8 ) -> Result<()> {
         let data_account = &mut ctx.accounts.data_account;
-
-        require!(data_account.initializer == *ctx.accounts.sender.to_account_info().key, VestingError::InvalidSender); 
-        // Here we are testing the Public Key because Solana won't let you sign a transaction with conflicting signers & sender fields
-
+        
         data_account.percent_available = percent;
         Ok(())
     }
@@ -113,9 +110,9 @@ pub struct Initialize<'info> {
         constraint=wallet_to_withdraw_from.owner == sender.key(),
         constraint=wallet_to_withdraw_from.mint == token_mint.key()
     )]
-    wallet_to_withdraw_from: Account<'info, TokenAccount>,
+    pub wallet_to_withdraw_from: Account<'info, TokenAccount>,
 
-    token_mint: Account<'info, Mint>,
+    pub token_mint: Account<'info, Mint>,
 
     #[account(mut)]
     pub sender: Signer<'info>,
@@ -132,6 +129,7 @@ pub struct Release<'info> {
         mut,
         seeds = [b"data_account", token_mint.key().as_ref()], 
         bump = data_bump,
+        constraint=data_account.initializer == sender.key()
     )]
     pub data_account: Account<'info, DataAccount>,
     

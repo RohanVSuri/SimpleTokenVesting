@@ -37,7 +37,7 @@ describe("token_vesting", () => {
 
   it("Test Initialize", async () => {
     // Send initialize transaction  
-    const initTx = await program.methods.initialize(beneficiaryArray, new anchor.BN(1000), decimals, dataBump, escrowBump).accounts({
+    const initTx = await program.methods.initialize(beneficiaryArray, new anchor.BN(1000), decimals, dataBump).accounts({
       dataAccount: dataAccount,
       escrowWallet: escrowWallet,
       walletToWithdrawFrom: senderATA,
@@ -72,9 +72,9 @@ describe("token_vesting", () => {
       }).signers([falseSender]).rpc();
       assert.ok(false, "Error was supposed to be thrown");
     }catch(err) {
-      // console.log(_err);
+      // console.log(err);
       assert.equal(err instanceof AnchorError, true);
-      assert.equal(err.error.errorCode.code, "InvalidSender");
+      assert.equal(err.error.errorCode.code, "ConstraintRaw");
     }
 
 
