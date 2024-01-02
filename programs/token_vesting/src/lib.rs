@@ -3,10 +3,6 @@ use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 use anchor_spl::associated_token::AssociatedToken;
 declare_id!("DzJ68fvNC6PNfZYQzjSNiyLxgcxHD3nkRGsBAjyGTWyd");
 
-
-// TODO:
-// - Write Comprehensive Documentation & Test Cases
-// - add 'create_vesting_account' function for any beneficiaries that deployer did not add
 #[program]
 pub mod token_vesting {
 
@@ -37,13 +33,7 @@ pub mod token_vesting {
             signer_seeds
         );
 
-        // token::transfer(cpi_ctx, data_account.token_amount * 1000000)?;
-        // token::transfer(cpi_ctx, data_account.token_amount )?;
-
         token::transfer(cpi_ctx, data_account.token_amount * u64::pow(10, decimals as u32))?;
-        msg!("{}", data_account.token_amount );
-        msg!("{}", (10 ^ decimals) as u64);
-        msg!("{}", data_account.token_amount * (10 ^ decimals) as u64);
 
         Ok(())
     }
@@ -75,7 +65,6 @@ pub mod token_vesting {
         require!(amount_to_transfer > beneficiary.claimed_tokens, VestingError::ClaimNotAllowed); // Allowed to claim new tokens
 
         // Transfer Logic:
-        
         let seeds = &["data_account".as_bytes(), token_mint_key.as_ref(), &[data_bump]];
         let signer_seeds = &[&seeds[..]];
 
@@ -92,7 +81,6 @@ pub mod token_vesting {
         );
 
         token::transfer(cpi_ctx, amount_to_transfer * u64::pow(10, decimals as u32))?;
-        // token::transfer(cpi_ctx, amount_to_transfer * (10 ^ decimals) as u64)?;
         data_account.beneficiaries[index].claimed_tokens = amount_to_transfer;
         
         Ok(())
@@ -196,7 +184,7 @@ pub struct Beneficiary {
 #[account]
 #[derive(Default)]
 pub struct DataAccount {
-    // 8 + 1 + 8 + 32 + 32 + 32 + 1 + (4 + (100 * (32 + 8 + 8)))
+    // Space in bytes: 8 + 1 + 8 + 32 + 32 + 32 + 1 + (4 + (100 * (32 + 8 + 8)))
     pub percent_available: u8, // 1
     pub token_amount: u64,     // 8
     pub initializer: Pubkey,   // 32
