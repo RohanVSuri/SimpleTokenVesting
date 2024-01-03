@@ -100,7 +100,7 @@ beneficiaryArray = [
 // senderATA as the output from spl-token create-account <TOKEN_MINT>
 // sender as an Anchor Keypair
 
-const initTx = await program.methods.initialize(beneficiaryArray, new anchor.BN(<AMOUNT_TO_ESCROW>), decimals, dataBump, escrowBump)
+const initTx = await program.methods.initialize(beneficiaryArray, new anchor.BN(<AMOUNT_TO_ESCROW>), decimals)
     .accounts({
         dataAccount: dataAccount,
         escrowWallet: escrowWallet,
