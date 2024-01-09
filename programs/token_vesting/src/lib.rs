@@ -13,7 +13,7 @@ pub mod token_vesting {
         data_account.beneficiaries = beneficiaries;
         data_account.percent_available = 0;
         data_account.token_amount = amount;
-        data_account.decimals = decimals;
+        data_account.decimals = decimals; // b/c bpf does not have any floats
         data_account.initializer = ctx.accounts.sender.to_account_info().key();
         data_account.escrow_wallet = ctx.accounts.escrow_wallet.to_account_info().key();
         data_account.token_mint = ctx.accounts.token_mint.to_account_info().key();
@@ -125,7 +125,7 @@ pub struct Release<'info> {
         mut,
         seeds = [b"data_account", token_mint.key().as_ref()], 
         bump = data_bump,
-        constraint=data_account.initializer == sender.key()
+        constraint=data_account.initializer == sender.key() @ VestingError::InvalidSender
     )]
     pub data_account: Account<'info, DataAccount>,
     

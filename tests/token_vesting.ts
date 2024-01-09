@@ -74,7 +74,7 @@ describe("token_vesting", () => {
     }catch(err) {
       // console.log(err);
       assert.equal(err instanceof AnchorError, true);
-      assert.equal(err.error.errorCode.code, "ConstraintRaw");
+      assert.equal(err.error.errorCode.code, "InvalidSender");
     }
 
 
