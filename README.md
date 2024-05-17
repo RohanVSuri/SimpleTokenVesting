@@ -147,4 +147,4 @@ const claimTx = await program.methods.claim(dataBump, escrowBump)
 *Refer to `tests/token_vesting.ts` for example usage*
 
 ## Author
-Bulit by Rohan Suri
+Built by Rohan Suri
